@@ -4,7 +4,8 @@ pipeline {
         skipDefaultCheckout ()
     }
     tools{ 
-        nodejs "node"
+        nodejs 'node'
+        sonarScanner 'sonar-scanner'
     }
 
     stages{
@@ -54,12 +55,11 @@ pipeline {
         stage ('SonarQube Analysis') {
             steps{
                 withSonarQubeEnv('sonarqube'){
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=devopswiki \
-                            -Dsonar.sources=devopswiki-fe/src,devopswiki-be/src \
-                            -Dsonar.host.url=http://localhost:9000
-                    '''
+                    sh "${tool 'sonar-scanner'}/bin/sonar-scanner \
+                        -Dsonar.projectKey=devopswiki \
+                        -Dsonar.sources=devopswiki-fe/src,devopswiki-be/src \
+                        -Dsonar.host.url=http://localhost:9000
+                    "
                 }
             }
             post {
