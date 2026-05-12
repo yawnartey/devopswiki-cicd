@@ -10,12 +10,16 @@ pipeline {
     stages{
         stage ('CheckoutFE'){
             steps {
-                git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
+                dir('devopswiki-fe') {
+                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
+                }
             }
         }
         stage ('CheckoutBE') {
             steps {
-                git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+                dir('devopswiki-be') {
+                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+                }
             }
         }
         stage ('Build') {
