@@ -84,6 +84,44 @@ pipeline {
                 }
             }
         }
+        stage('Docker Build & Push') {
+            parallel {
+                stage('Build & Push Frontend') {
+                    steps {
+                        dir('devopswiki-fe') {
+                            withCredentials([usernamePassword(
+                                credentialsId: 'dockerhub-credentials',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                            )]) {
+                                sh '''
+                                    echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+                                    docker build -t $DOCKERHUB_USER/devopswiki:fe-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:fe-latest
+                                '''
+                            }
+                        }
+                    }
+                }
+                stage('Build & Push Backend') {
+                    steps {
+                        dir('devopswiki-be/src') {
+                            withCredentials([usernamePassword(
+                                credentialsId: 'dockerhub-credentials',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                            )]) {
+                                sh '''
+                                    echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+                                    docker build -t $DOCKERHUB_USER/devopswiki:be-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:be-latest
+                                '''
+                            }
+                        }
+                    }
+                }                
+            }
+        }
     }
     post {
         success {
