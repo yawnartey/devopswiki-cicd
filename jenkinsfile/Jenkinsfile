@@ -1,0 +1,90 @@
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout ()
+    }
+    tools{ 
+        nodejs "node"
+    }
+
+    stages{
+        stage ('CheckoutFE'){
+            steps {
+                git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
+            }
+        }
+        stage ('CheckoutBE') {
+            steps {
+                git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+            }
+        }
+        stage ('Build') {
+            parallel {
+                stage('FastAPI Backend Build') {
+                    steps {
+                        dir('devopswiki-be/src') {
+                            sh ''' 
+                                python3 -m venv venv
+                                . venv/bin/activate
+                                pip install -r requirement.txt
+                            '''
+                        }
+                    }
+                }
+                stage('React Frontend Build') {
+                    steps {
+                        dir('devopswiki-fe') {
+                            sh 'npm ci && npm run build'
+                        }
+                    }
+                }
+            }
+        }
+        stage ('Test') {
+            steps {
+                script {
+                    echo 'No tests yet. Test stage will be worked on shortly'
+                }
+            }
+        }
+        stage ('SonarQube Analysis') {
+            steps{
+                withSonarQubeEnv('sonarqube'){
+                    sh '''
+                        sonar-scanner \
+                            -Dsonar.projectKey=devopswiki \
+                            -Dsonar.sources=devopswiki-fe/src,devopswiki-be/src \
+                            -Dsonar.host.url=http://localhost:9000
+                    '''
+                }
+            }
+            post {
+                success {
+                    script {
+                        timeout(time: 2, unit: 'MINUTES') {
+                            def qualityGate = waitForQualityGate()
+                            if (qualityGate.status != 'OK') {
+                                error "SonarQube Quality Gate failed: ${qualityGate.status}"
+                            }else{
+                                echo "SonarQube analysis passed."
+                            }
+                        }
+                    }
+                }
+                failure {
+                    echo "SonarQube analysis failed during execution."
+                }
+            }
+        }
+    }
+    post {
+        success {
+            // Action after the build was successful
+            echo 'Build was successful'
+        }
+        failure {
+            // Action after the build fails
+            echo 'Build failed. Check logs'
+        }
+    }
+}
