@@ -3,12 +3,12 @@ pipeline {
     options {
         skipDefaultCheckout ()
     }
-    tools{ 
+    tools { 
         nodejs 'node'
     }
 
-    stages{
-        stage ('Checkout Frontend'){
+    stages {
+        stage ('Checkout Frontend') {
             steps {
                 dir('devopswiki-fe') {
                     git branch: 'dev', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
@@ -59,8 +59,8 @@ pipeline {
             }
         }
         stage ('SonarQube Analysis') {
-            steps{
-                withSonarQubeEnv('sonarqube'){
+            steps {
+                withSonarQubeEnv('sonarqube') {
                     script {
                         def scannerHome = tool 'sonar-scanner'
                         sh """
@@ -79,7 +79,7 @@ pipeline {
                             def qualityGate = waitForQualityGate()
                             if (qualityGate.status != 'OK') {
                                 error "SonarQube Quality Gate failed: ${qualityGate.status}"
-                            }else{
+                            } else {
                                 echo "SonarQube analysis passed."
                             }
                         }
@@ -132,29 +132,40 @@ pipeline {
             parallel {
                 stage('Deploy Frontend') {
                     steps {
-                        dir('devopswiki-containerisation/frontend'){
-                            withCredentials([usernamePassword(
-                                credentialsId: 'dockerhub-credentials',
-                                usernameVariable: 'DOCKERHUB_USER',
-                                passwordVariable: 'DOCKERHUB_PASS'
-                            )]){
-                                sh ''' 
-                                    docker-compose down || true
-                                    docker-compose pull
-                                    docker-compose up -d
+                        sshagent(['ec2-ssh-key']) {
+                            withCredentials([
+                                string(credentialsId: 'testbed-fe-ip', variable: 'FE_IP'),
+                                usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no yaw@$FE_IP "
+                                        echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
+                                        cd /opt/app &&
+                                        docker-compose pull &&
+                                        docker-compose up -d
+                                    "
                                 '''
                             }
                         }
                     }
                 }
-                stage('Deploy Backend'){
+                stage('Deploy Backend') {
                     steps {
-                        dir('devopswiki-containerisation/backend'){
-                            sh ''' 
-                                docker-compose down || true
-                                docker-compose pull
-                                docker-compose up -d
-                            '''
+                        sshagent(['ec2-ssh-key']) {
+                            withCredentials([
+                                string(credentialsId: 'testbed-fe-ip', variable: 'FE_IP'),
+                                string(credentialsId: 'testbed-be-ip', variable: 'BE_IP'),
+                                usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
+                            ]) {
+                                sh '''
+                                    ssh -o StrictHostKeyChecking=no -J yaw@$FE_IP yaw@$BE_IP "
+                                        echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
+                                        cd /opt/app &&
+                                        docker-compose pull &&
+                                        docker-compose up -d
+                                    "
+                                '''
+                            }
                         }
                     }
                 }
