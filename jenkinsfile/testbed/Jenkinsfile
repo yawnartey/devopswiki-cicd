@@ -8,17 +8,24 @@ pipeline {
     }
 
     stages{
-        stage ('CheckoutFE'){
+        stage ('Checkout Frontend'){
             steps {
                 dir('devopswiki-fe') {
-                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
+                    git branch: 'dev', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
                 }
             }
         }
-        stage ('CheckoutBE') {
+        stage ('Checkout Backend') {
             steps {
                 dir('devopswiki-be') {
-                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+                    git branch: 'dev', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+                }
+            }
+        }
+        stage ('Checkout Containerisation') {
+            steps {
+                dir('devopswiki-containerisation') {
+                    git branch: 'dev', credentialsId: 'gh-yawnartey', url: 'https://github.com/yawnartey/devopswiki-containerisation'
                 }
             }
         }
@@ -96,8 +103,8 @@ pipeline {
                             )]) {
                                 sh '''
                                     echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
-                                    docker build -t $DOCKERHUB_USER/devopswiki:fe-latest .
-                                    docker push $DOCKERHUB_USER/devopswiki:fe-latest
+                                    docker build -t $DOCKERHUB_USER/devopswiki:fe-testbed-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:fe-testbed-latest
                                 '''
                             }
                         }
@@ -113,9 +120,41 @@ pipeline {
                             )]) {
                                 sh '''
                                     echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
-                                    docker build -t $DOCKERHUB_USER/devopswiki:be-latest .
-                                    docker push $DOCKERHUB_USER/devopswiki:be-latest
+                                    docker build -t $DOCKERHUB_USER/devopswiki:be-testbed-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:be-testbed-latest
                                 '''
+                            }
+                        }
+                    }
+                }
+                stage('Deploy'){
+                    parallel{
+                        stage('Deploy Frontend') {
+                            steps {
+                                dir('devopswiki-containerisation/frontend'){
+                                    withCredentials([usernamePassword(
+                                        credentialsId: 'dockerhub-credentials',
+                                        usernameVariable: 'DOCKERHUB_USER',
+                                        passwordVariable: 'DOCKERHUB_PASS'
+                                    )]){
+                                        sh ''' 
+                                            docker-compose down || true
+                                            docker-compose pull
+                                            docker-compose up -d
+                                        '''
+                                    }
+                                }
+                            }
+                        }
+                        stage('Deploy Backend'){
+                            steps {
+                                dir('devopswiki-containerisation/backend'){
+                                    sh ''' 
+                                        docker-compose down || true
+                                        docker-compose pull
+                                        docker-compose up -d
+                                    '''
+                                }
                             }
                         }
                     }
