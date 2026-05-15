@@ -138,6 +138,7 @@ pipeline {
                                 usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
                             ]) {
                                 sh '''
+                                    scp -o StrictHostKeyChecking=no devopswiki-containerisation/frontend/docker-compose.yml yaw@$FE_IP:/opt/app/docker-compose.yml
                                     ssh -o StrictHostKeyChecking=no yaw@$FE_IP "
                                         echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
                                         cd /opt/app &&
@@ -158,6 +159,7 @@ pipeline {
                                 usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
                             ]) {
                                 sh '''
+                                    scp -o StrictHostKeyChecking=no -J yaw@$FE_IP devopswiki-containerisation/backend/docker-compose.yml yaw@$BE_IP:/opt/app/docker-compose.yml
                                     ssh -o StrictHostKeyChecking=no -J yaw@$FE_IP yaw@$BE_IP "
                                         echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
                                         cd /opt/app &&
