@@ -1,0 +1,185 @@
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout ()
+    }
+    tools { 
+        nodejs 'node'
+    }
+
+    stages {
+        stage ('Checkout Frontend') {
+            steps {
+                dir('devopswiki-fe') {
+                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-fe'
+                }
+            }
+        }
+        stage ('Checkout Backend') {
+            steps {
+                dir('devopswiki-be') {
+                    git branch: 'main', credentialsId:'gh-yawnartey', url:'https://github.com/yawnartey/devopswiki-be'
+                }
+            }
+        }
+        stage ('Checkout Containerisation') {
+            steps {
+                dir('devopswiki-containerisation') {
+                    git branch: 'main', credentialsId: 'gh-yawnartey', url: 'https://github.com/yawnartey/devopswiki-containerisation'
+                }
+            }
+        }
+        stage ('Build App') {
+            parallel {
+                stage('FastAPI Backend Build') {
+                    steps {
+                        dir('devopswiki-be/src') {
+                            sh ''' 
+                                python3 -m venv venv
+                                . venv/bin/activate
+                                pip install -r requirement.txt
+                            '''
+                        }
+                    }
+                }
+                stage('React Frontend Build') {
+                    steps {
+                        dir('devopswiki-fe') {
+                            sh 'npm ci && npm run build'
+                        }
+                    }
+                }
+            }
+        }
+        stage ('Test App') {
+            steps {
+                script {
+                    echo 'No tests yet. Test stage will be worked on shortly'
+                }
+            }
+        }
+        stage ('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    script {
+                        def scannerHome = tool 'sonar-scanner'
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=devopswiki \
+                                -Dsonar.sources=devopswiki-fe/src,devopswiki-be/src \
+                                -Dsonar.host.url=http://localhost:9000
+                        """
+                    }
+                }
+            }
+            post {
+                success {
+                    script {
+                        timeout(time: 2, unit: 'MINUTES') {
+                            def qualityGate = waitForQualityGate()
+                            if (qualityGate.status != 'OK') {
+                                error "SonarQube Quality Gate failed: ${qualityGate.status}"
+                            } else {
+                                echo "SonarQube analysis passed."
+                            }
+                        }
+                    }
+                }
+                failure {
+                    echo "SonarQube analysis failed during execution."
+                }
+            }
+        }
+        stage('Build Docker') {
+            parallel {
+                stage('Build & Push Frontend') {
+                    steps {
+                        dir('devopswiki-fe') {
+                            withCredentials([usernamePassword(
+                                credentialsId: 'dockerhub-credentials',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                            )]) {
+                                sh '''
+                                    echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+                                    docker build -t $DOCKERHUB_USER/devopswiki:fe-prod-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:fe-prod-latest
+                                '''
+                            }
+                        }
+                    }
+                }
+                stage('Build & Push Backend') {
+                    steps {
+                        dir('devopswiki-be/src') {
+                            withCredentials([usernamePassword(
+                                credentialsId: 'dockerhub-credentials',
+                                usernameVariable: 'DOCKERHUB_USER',
+                                passwordVariable: 'DOCKERHUB_PASS'
+                            )]) {
+                                sh '''
+                                    echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+                                    docker build -t $DOCKERHUB_USER/devopswiki:be-prod-latest .
+                                    docker push $DOCKERHUB_USER/devopswiki:be-prod-latest
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage('Deploy Container') {
+            parallel {
+                stage('Deploy Frontend') {
+                    steps {
+                        sshagent(['ec2-ssh-key']) {
+                            withCredentials([
+                                string(credentialsId: 'prod-fe-ip', variable: 'FE_IP'),
+                                usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
+                            ]) {
+                                sh '''
+                                    scp -o StrictHostKeyChecking=no devopswiki-containerisation/frontend/docker-compose.yml yaw@$FE_IP:/opt/app/docker-compose.yml
+                                    ssh -o StrictHostKeyChecking=no yaw@$FE_IP "
+                                        echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
+                                        cd /opt/app &&
+                                        docker-compose pull &&
+                                        docker-compose up -d
+                                    "
+                                '''
+                            }
+                        }
+                    }
+                }
+                stage('Deploy Backend') {
+                    steps {
+                        sshagent(['ec2-ssh-key']) {
+                            withCredentials([
+                                string(credentialsId: 'prod-fe-ip', variable: 'FE_IP'),
+                                string(credentialsId: 'prod-be-ip', variable: 'BE_IP'),
+                                usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')
+                            ]) {
+                                sh '''
+                                    scp -o StrictHostKeyChecking=no -J yaw@$FE_IP devopswiki-containerisation/backend/docker-compose.yml yaw@$BE_IP:/opt/app/docker-compose.yml
+                                    ssh -o StrictHostKeyChecking=no -J yaw@$FE_IP yaw@$BE_IP "
+                                        echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin &&
+                                        cd /opt/app &&
+                                        docker-compose pull &&
+                                        docker-compose up -d
+                                    "
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        success {
+            echo 'Build was successful'
+        }
+        failure {
+            echo 'Build failed. Check logs'
+        }
+    }
+}
