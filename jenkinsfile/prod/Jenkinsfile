@@ -104,7 +104,7 @@ pipeline {
                             )]) {
                                 sh '''
                                     echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
-                                    docker build -t $DOCKERHUB_USER/devopswiki:fe-latest .
+                                    docker build --platform linux/amd64 -t $DOCKERHUB_USER/devopswiki:fe-latest .
                                     docker push $DOCKERHUB_USER/devopswiki:fe-latest
                                 '''
                             }
@@ -121,7 +121,7 @@ pipeline {
                             )]) {
                                 sh '''
                                     echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
-                                    docker build -t $DOCKERHUB_USER/devopswiki:be-latest .
+                                    docker build --platform linux/amd64 -t $DOCKERHUB_USER/devopswiki:be-latest .
                                     docker push $DOCKERHUB_USER/devopswiki:be-latest
                                 '''
                             }
